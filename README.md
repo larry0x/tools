@@ -2,7 +2,7 @@
 
 Configuration files and justfile recipes shared by my repositories, so a change is made once, here, rather than once per repository.
 
-**A repository takes the files as committed copies, pinned by its `flake.lock`.** `just sync-tools` copies the files at the pinned version into the repository, and `nix flake check` fails while any copy differs from it. So a copy cannot be edited by hand without failing CI, and bumping this repository is a code change: `just bump-tools` updates `flake.lock` and the copies together, and the diff shows exactly what changed.
+**A repository takes the files as committed copies, pinned by its `flake.lock`.** `just sync-tools` copies the files at the pinned version into the repository, and `nix flake check` fails while any copy differs from it. So a copy cannot be edited by hand without failing CI, and bumping this repository is a code change: `just bump-tools` updates `flake.lock` and the copies together, and the diff shows exactly what changed. The CI workflows are not copied: they are reusable workflows, which each repository calls (see below).
 
 **The copies are files, not symlinks into the Nix store.** Editors and their language servers read them without entering a dev shell, the forge's web interface shows them, and garbage collection cannot remove them.
 
@@ -83,8 +83,30 @@ JSON cannot carry comments, so their reasons are here.
 
 ## The CI workflows
 
-One workflow per language, in two variants: `.github/workflows/` for GitHub, and `.forgejo/workflows/` for Forgejo, whose runners carry the label `native` and have nix installed already. A repository takes the variant for its forge, for the languages it has, the same way it takes the configuration files.
+The workflows in `.github/workflows/` are reusable ones, one per language; `ci.yml` is this repository's own CI, which calls them from the same commit. A repository keeps a short workflow of its own per language, which holds its triggers, so its paths filter can list files of that repository alone, and calls the reusable one at a commit.
 
-Each step runs one just recipe, so CI checks exactly what `just ci` checks. A language's workflow runs when a file of that language changes, or a file that changes what the recipes do: `flake.nix`, `flake.lock`, the justfile, and `.gitignore`. The Nix workflow runs on every change, because `nix flake check` is what catches a copy that differs from the pinned version.
+`just sync-tools` writes the commit that `flake.lock` pins into every call, whatever reference the call named before: a full or short hash, a branch, or a tag. `nix flake check` fails while a call names anything but the pinned commit, written in full.
 
-This repository runs the GitHub variants on itself. The recipes for languages it does not have do nothing, so those workflows pass.
+A GitHub repository writes the call as:
+
+```yaml
+jobs:
+  rust:
+    uses: larry0x/tools/.github/workflows/rust.yml@<commit>
+```
+
+A Forgejo repository writes it by URL, since the reusable workflows live on GitHub, and passes inputs for its runners, which carry the label `native` and have nix installed already:
+
+```yaml
+jobs:
+  rust:
+    runs-on: native
+    uses: https://github.com/larry0x/tools/.github/workflows/rust.yml@<commit>
+    with:
+      runner: native
+      install-nix: false
+```
+
+**`runs-on` is required on Forgejo.** Without it, Forgejo creates no job for a workflow called from another host, so CI looks absent rather than failing. `nix flake check` fails when a job in `.forgejo/workflows/` calls a tools workflow without it. With it, the runner runs the whole reusable workflow as one job, so Forgejo shows one status per language, where GitHub shows one per job, such as Format and Lint + Test.
+
+**The workflows install nix with a plain step, not an action.** Forgejo resolves a short action name, such as `cachix/install-nix-action`, against its own mirror, which does not carry it, and fetches every action before the job starts, even one whose step is skipped, so the job fails. The step runs the official installer at a pinned version and checksum, and only where `install-nix` is true.

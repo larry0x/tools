@@ -101,10 +101,11 @@ bump-tools: && sync-tools
   fi
 
 # A repository that takes files from the tools repository has the flake app
-# sync-tools, which copies them in. The tools repository itself has no such
-# app, so there the recipe does nothing.
+# sync-tools, which copies them in, and pins the repository's calls to the
+# reusable workflows. The tools repository itself has no such app, so there
+# the recipe does nothing.
 #
-# Copy in the shared files at the version flake.lock pins
+# Copy in the shared files, and pin the workflow calls, at the version flake.lock pins
 [group('tools')]
 [script]
 sync-tools:
@@ -462,8 +463,11 @@ fmt-check-yaml:
   yamlfmt -lint
 
 # actionlint finds the workflows in .github/workflows/ by itself, but not
-# those in .forgejo/workflows/, which it is handed by path. Forgejo's runners
-# carry the label `native`, which actionlint does not know.
+# those in .forgejo/workflows/, which it is handed by path. It checks them
+# by GitHub's rules, so two findings are ignored there: Forgejo's runners
+# carry the label `native`, which actionlint does not know, and Forgejo
+# needs `runs-on` on a job that calls a reusable workflow, which GitHub
+# forbids.
 
 # Lint the YAML files
 [group('yaml')]
@@ -475,7 +479,10 @@ lint-yaml:
   yamllint --strict .
   if [ -d .github/workflows ]; then actionlint; fi
   if [ -d .forgejo/workflows ]; then
-    actionlint -ignore 'label "native" is unknown' .forgejo/workflows/*.y*ml
+    actionlint \
+      -ignore 'label "native" is unknown' \
+      -ignore '"runs-on" is not available' \
+      .forgejo/workflows/*.y*ml
   fi
 
 # ---------------------------------- Markdown ----------------------------------

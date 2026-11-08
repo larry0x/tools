@@ -1,10 +1,12 @@
 # The functions a repository calls from its flake.nix to take files from this
-# one. `root` is this repository's source, in the Nix store.
-{ root }:
+# one. `root` is this repository's source, in the Nix store, and `rev` its
+# commit, or null when the source is a working tree with uncommitted changes.
+{ root, rev }:
 let
   # Every file a repository may take. The repository's own files, such as
   # flake.nix and README.md, are not on the list, so no repository can take
-  # one by mistake.
+  # one by mistake. The CI workflows are not files to take: a repository
+  # calls them, from workflows of its own that hold its triggers.
   files = [
     ".editorconfig"
     ".gitignore"
@@ -19,28 +21,6 @@ let
     "rustfmt.toml"
     "taplo.toml"
     "tsconfig.json"
-
-    # The CI workflows, one per language, in a variant for each forge. Each
-    # runs the language's just recipes, which do nothing where the language
-    # is absent.
-    ".forgejo/workflows/js.yml"
-    ".forgejo/workflows/latex.yml"
-    ".forgejo/workflows/lean.yml"
-    ".forgejo/workflows/markdown.yml"
-    ".forgejo/workflows/nix.yml"
-    ".forgejo/workflows/python.yml"
-    ".forgejo/workflows/rust.yml"
-    ".forgejo/workflows/toml.yml"
-    ".forgejo/workflows/yaml.yml"
-    ".github/workflows/js.yml"
-    ".github/workflows/latex.yml"
-    ".github/workflows/lean.yml"
-    ".github/workflows/markdown.yml"
-    ".github/workflows/nix.yml"
-    ".github/workflows/python.yml"
-    ".github/workflows/rust.yml"
-    ".github/workflows/toml.yml"
-    ".github/workflows/yaml.yml"
   ];
 
   # A repository names each file it takes either by its name, to copy it to
@@ -66,6 +46,17 @@ let
 
   # A list of entries, each turned into a line of shell, joined.
   forEach = entries: f: builtins.concatStringsSep "\n" (map (e: f (normalize e)) entries);
+
+  # A call to a reusable workflow of this repository: the workflow's path,
+  # then @ and a reference. A GitHub caller writes the path as is; a Forgejo
+  # caller writes it after https://github.com/. The reference is every
+  # character after the @ that can appear in a commit hash, short or full, a
+  # branch, or a tag. The first group is everything up to and including the
+  # @.
+  workflowCall = "(larry0x/tools/\\.github/workflows/[A-Za-z0-9_.-]+@)[A-Za-z0-9_./-]+";
+
+  # The folders that hold a repository's CI workflows.
+  workflowDirs = ".github/workflows .forgejo/workflows";
 in
 {
   inherit files;
@@ -97,17 +88,25 @@ in
     pkgs.markdownlint-cli2
   ];
 
-  # A flake check that fails when a copy in the repository differs from the
-  # file in this repository at the pinned version, or is missing. `src` is the
-  # repository's own source, its flake's `self`. Since a flake's source holds
-  # only the files git tracks, a copy not yet added to git counts as missing.
+  # A flake check that fails when:
+  #
+  # - a copy in the repository differs from the file in this repository at
+  #   the pinned version, or is missing;
+  # - a CI workflow calls a reusable workflow of this repository at any
+  #   reference but the pinned commit, written in full;
+  # - a job in .forgejo/workflows/ calls one without `runs-on`, which makes
+  #   Forgejo create no job at all, so CI would look absent, not failing.
+  #
+  # `src` is the repository's own source, its flake's `self`. Since a flake's
+  # source holds only the files git tracks, a copy not yet added to git
+  # counts as missing.
   check =
     {
       pkgs,
       src,
       files,
     }:
-    pkgs.runCommandLocal "tools-files" { } ''
+    pkgs.runCommandLocal "tools-files" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
       status=0
       ${forEach files (
         f:
@@ -124,16 +123,46 @@ in
             status=1
           ''
       )}
+      ${
+        if rev == null then
+          ''
+            echo 'The tools input has uncommitted changes, so the workflow calls are not checked.'
+          ''
+        else
+          ''
+            for dir in ${workflowDirs}; do
+              [ -d '${src}'/"$dir" ] || continue
+              while IFS= read -r call; do
+                if [ "''${call#*@}" != '${rev}' ]; then
+                  echo "$dir calls $call, not the pinned commit ${rev}."
+                  status=1
+                fi
+              done < <(grep -rhoE '${workflowCall}' '${src}'/"$dir" || true)
+            done
+          ''
+      }
+      if [ -d '${src}/.forgejo/workflows' ]; then
+        for file in '${src}'/.forgejo/workflows/*.y*ml; do
+          [ -f "$file" ] || continue
+          jobs=$(yq -r '.jobs // {} | to_entries[] | select((.value.uses // "") | test("larry0x/tools/")) | select(.value["runs-on"] == null) | .key' "$file")
+          for job in $jobs; do
+            echo ".forgejo/workflows/$(basename "$file"): job $job calls a tools workflow without runs-on, so Forgejo would create no job for it."
+            status=1
+          done
+        done
+      fi
       if [ "$status" -ne 0 ]; then
-        echo 'Run `nix run .#sync-tools` to copy the files from the pinned version.'
+        echo 'Run `just sync-tools` to copy the files and pin the workflow calls at the pinned version. It does not add runs-on.'
         exit 1
       fi
       touch "$out"
     '';
 
   # A flake app that copies the files into the repository, at the top of the
-  # git working tree it runs in. Files in the store are read-only, so each
-  # copy is given ordinary permissions.
+  # git working tree it runs in, and writes the pinned commit into every call
+  # to a reusable workflow of this repository, whatever reference it named
+  # before. Files in the store are read-only, so each copy is given ordinary
+  # permissions.
   sync =
     {
       pkgs,
@@ -144,7 +173,9 @@ in
         name = "sync-tools";
         runtimeInputs = [
           pkgs.coreutils
+          pkgs.findutils
           pkgs.git
+          pkgs.gnused
         ];
         text = ''
           top=$(git rev-parse --show-toplevel)
@@ -152,12 +183,26 @@ in
             install -D -m 644 '${root}/${f.from}' "$top/${f.to}"
             echo 'copied ${f.from} to ${f.to}'
           '')}
+          ${
+            if rev == null then
+              ''
+                echo 'The tools input has uncommitted changes, so the workflow calls are left as they are.'
+              ''
+            else
+              ''
+                for dir in ${workflowDirs}; do
+                  [ -d "$top/$dir" ] || continue
+                  find "$top/$dir" -name '*.y*ml' -exec sed -i -E 's#${workflowCall}#\1${rev}#g' {} +
+                done
+                echo 'pinned the workflow calls to ${rev}'
+              ''
+          }
         '';
       };
     in
     {
       type = "app";
       program = "${script}/bin/sync-tools";
-      meta.description = "Copy the shared files from the pinned tools version";
+      meta.description = "Copy the shared files, and pin the workflow calls, at the pinned tools version";
     };
 }

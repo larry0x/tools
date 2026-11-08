@@ -21,7 +21,10 @@
       forEachSystem = f: nixpkgs.lib.genAttrs systems f;
     in
     {
-      lib = import ./lib.nix { root = self.outPath; };
+      lib = import ./lib.nix {
+        root = self.outPath;
+        rev = self.rev or null;
+      };
 
       # This repository uses its own files: the justfile at its root is the
       # base justfile, so `just ci` here runs the shared recipes against the
