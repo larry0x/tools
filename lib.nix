@@ -83,6 +83,17 @@ in
 
     # Linter for the Markdown files, configured by .markdownlint-cli2.yaml.
     pkgs.markdownlint-cli2
+
+    # The links point into this repository's source in the Nix store. nix
+    # can evaluate a flake input without copying it into the store, so
+    # nothing would put the source there, and the links would be broken. A
+    # package that refers to the source makes building the dev shell copy
+    # it, and keeps it from garbage collection while the shell's own root
+    # does.
+    (pkgs.runCommandLocal "tools-source" { } ''
+      mkdir -p "$out"
+      ln -s '${root}' "$out/source"
+    '')
   ];
 
   # A flake check that fails when a file the repository takes is not a link
