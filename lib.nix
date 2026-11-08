@@ -49,11 +49,14 @@ let
 
   # A call to a reusable workflow of this repository: the workflow's path,
   # then @ and a reference. A GitHub caller writes the path as is; a Forgejo
-  # caller writes it after https://github.com/. The reference is every
-  # character after the @ that can appear in a commit hash, short or full, a
-  # branch, or a tag. The first group is everything up to and including the
-  # @.
-  workflowCall = "(larry0x/tools/\\.github/workflows/[A-Za-z0-9_.-]+@)[A-Za-z0-9_./-]+";
+  # caller writes it after https://github.com/. The reference is the whole
+  # of what follows the @, up to a space, a quote, or the end of the line,
+  # so that a commit hash, short or full, a branch, or a tag with any of the
+  # characters git allows, such as `v1.0.0+build`, is read in full. The
+  # first group is everything up to and including the @. The shell receives
+  # it through escapeShellArg, since it holds both kinds of quote, and sed
+  # uses ~ as its delimiter, which git forbids in a reference.
+  workflowCall = "(larry0x/tools/\\.github/workflows/[A-Za-z0-9_.-]+@)[^[:space:]\"']+";
 
   # The folders that hold a repository's CI workflows.
   workflowDirs = ".github/workflows .forgejo/workflows";
@@ -137,7 +140,7 @@ in
                   echo "$dir calls $call, not the pinned commit ${rev}."
                   status=1
                 fi
-              done < <(grep -rhoE '${workflowCall}' '${src}'/"$dir" || true)
+              done < <(grep -rhoE ${pkgs.lib.escapeShellArg workflowCall} '${src}'/"$dir" || true)
             done
           ''
       }
@@ -192,7 +195,7 @@ in
               ''
                 for dir in ${workflowDirs}; do
                   [ -d "$top/$dir" ] || continue
-                  find "$top/$dir" -name '*.y*ml' -exec sed -i -E 's#${workflowCall}#\1${rev}#g' {} +
+                  find "$top/$dir" -name '*.y*ml' -exec sed -i -E "s~"${pkgs.lib.escapeShellArg workflowCall}"~\\1${rev}~g" {} +
                 done
                 echo 'pinned the workflow calls to ${rev}'
               ''
