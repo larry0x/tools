@@ -1,0 +1,62 @@
+# This file comes from the tools repository, https://github.com/larry0x/tools,
+# and `just sync-tools` copies it in. `nix flake check` fails when the copy
+# differs from the version flake.lock pins, so change it there, not in the
+# copy.
+
+name: Nix
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# The workflow runs on every change: `nix flake check` checks, among other
+# things, that the files taken from the tools repository are unchanged, and
+# any of them can change.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "*"
+
+permissions:
+  contents: read
+
+# Each step runs one just recipe and nothing else, so CI checks exactly what
+# `just ci` checks before every commit. A recipe does nothing in a repository
+# without its language.
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: just fmt-check-nix
+        run: nix develop --command just fmt-check-nix
+
+  lint-test:
+    name: Lint + Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: just lint-nix
+        run: nix develop --command just lint-nix
+
+      - name: just test-nix
+        run: nix develop --command just test-nix

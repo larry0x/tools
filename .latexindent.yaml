@@ -1,0 +1,5 @@
+# latexindent settings. The just recipes pass this file with -l, so the
+# terminal and CI format the same way.
+
+# Indent with two spaces, as .editorconfig says, not latexindent's tab.
+defaultIndent: "  "
