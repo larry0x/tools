@@ -1,0 +1,75 @@
+# A reusable workflow: a repository calls it from a workflow of its own,
+# which holds the triggers, with
+#
+#   jobs:
+#     lean:
+#       uses: larry0x/tools/.github/workflows/lean.yml@<commit>
+#
+# A Forgejo repository calls it by URL, sets `runs-on`, without which
+# Forgejo creates no job, and passes inputs for its runners, which carry the
+# label `native` and have nix installed already:
+#
+#   jobs:
+#     lean:
+#       runs-on: native
+#       uses: https://github.com/larry0x/tools/.github/workflows/lean.yml@<commit>
+#       with:
+#         runner: native
+#         install-nix: false
+
+name: Lean
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: The label of the runner the jobs run on
+        type: string
+        default: ubuntu-latest
+      install-nix:
+        description: Whether to install nix first
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Each step runs one just recipe and nothing else, so CI checks exactly what
+# `just ci` checks before every commit. A recipe does nothing in a repository
+# without its language.
+jobs:
+  lint-test:
+    name: Lint + Test
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs nix with its official installer, as a plain step, so the
+      # workflow needs no third-party action: Forgejo resolves a short action
+      # name against its own mirror, which does not carry one, and fetches
+      # every action before the job starts, even one whose step is skipped.
+      # The installer's SHA-256 is pinned, and the installer checks the
+      # tarball it downloads against a hash written inside it. Multi-user
+      # mode, since the build sandbox of single-user mode needs unprivileged
+      # user namespaces, which Ubuntu restricts.
+      - name: Install nix
+        if: inputs.install-nix
+        env:
+          NIX_VERSION: "2.34.9"
+          NIX_INSTALLER_SHA256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+        run: |
+          installer="$RUNNER_TEMP/install-nix"
+          curl -fsSL -o "$installer" "https://releases.nixos.org/nix/nix-$NIX_VERSION/install"
+          echo "$NIX_INSTALLER_SHA256  $installer" | sha256sum -c -
+          printf 'experimental-features = nix-command flakes\n' > "$RUNNER_TEMP/nix.conf"
+          sh "$installer" --daemon --yes --no-channel-add --nix-extra-conf-file "$RUNNER_TEMP/nix.conf"
+          echo /nix/var/nix/profiles/default/bin >> "$GITHUB_PATH"
+
+      - name: just lint-lean
+        run: nix develop --command just lint-lean
+
+      - name: just test-lean
+        run: nix develop --command just test-lean
