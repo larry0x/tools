@@ -181,7 +181,6 @@ in
         name = "sync-tools";
         runtimeInputs = [
           pkgs.coreutils
-          pkgs.gawk
           pkgs.git
           pkgs.gnused
           pkgs.yq-go
@@ -199,20 +198,23 @@ in
               ''
             else
               ''
-                # Each value is replaced as a literal string, so nothing
-                # around it changes. The longest values go first, so that one
-                # which begins another, such as @main and @main-v2, cannot
-                # replace part of it. sed uses ~ as its delimiter, which git
-                # forbids in a reference.
+                # Each value yq reads is replaced as text, but only where
+                # a YAML scalar can end right after it: at a space, a quote,
+                # a comma or a closing bracket of a flow collection, or the
+                # end of the line. So nothing around it changes, and a value
+                # that begins another, such as a short hash of the full one,
+                # or @main of @main-v2, never matches inside it. sed uses ~
+                # as its delimiter, which git forbids in a reference.
                 for dir in ${workflowDirs}; do
                   for file in "$top/$dir"/*.y*ml; do
                     [ -f "$file" ] || continue
                     while IFS= read -r call; do
                       rest=''${call#*${workflowPath}}
                       new="''${call%%${workflowPath}*}${workflowPath}''${rest%%@*}@${rev}"
-                      old=$(printf '%s' "$call" | sed 's/[][\\.*^$~]/\\&/g')
-                      sed -i "s~$old~$new~g" "$file"
-                    done < <(yq -r ${pkgs.lib.escapeShellArg listCalls} "$file" | sort -u | awk '{ print length($0) "\t" $0 }' | sort -t "$(printf '\t')" -k1,1nr | cut -f2-)
+                      [ "$call" != "$new" ] || continue
+                      old=$(printf '%s' "$call" | sed 's/[][\\.*^$+?(){}|~]/\\&/g')
+                      sed -i -E "s~$old([]\"',}[:space:]]|\$)~$new\\1~g" "$file"
+                    done < <(yq -r ${pkgs.lib.escapeShellArg listCalls} "$file" | sort -u)
                   done
                 done
                 echo 'pinned the workflow calls to ${rev}'
