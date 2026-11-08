@@ -103,13 +103,16 @@ bump-tools: && sync-tools
 # A repository that takes files from the tools repository has the flake app
 # sync-tools, which copies them in, and pins the repository's calls to the
 # reusable workflows. The tools repository itself has no such app, so there
-# the recipe does nothing.
+# the recipe does nothing. A flake without an `apps` output counts as having
+# no such app; any other error in evaluating the flake stops the recipe, and
+# shows. getFlake reads the working tree, as `nix run .#…` does, which takes
+# --impure.
 #
 # Copy in the shared files, and pin the workflow calls, at the version flake.lock pins
 [group('tools')]
 [script]
 sync-tools:
-  has_sync=$(nix eval .#apps --apply 'apps: builtins.any (a: a ? "sync-tools") (builtins.attrValues apps)' 2>/dev/null || echo false)
+  has_sync=$(nix eval --impure --expr 'let flake = builtins.getFlake (toString ./.); in builtins.any (system: system ? "sync-tools") (builtins.attrValues (flake.apps or { }))')
   [ "$has_sync" = true ] || exit 0
   nix run .#sync-tools
 
