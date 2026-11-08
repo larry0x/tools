@@ -1,0 +1,62 @@
+# A reusable workflow: a repository calls it from a workflow of its own,
+# which holds the triggers, with
+#
+#   jobs:
+#     yaml:
+#       uses: larry0x/tools/.github/workflows/yaml.yml@<commit>
+#
+# A Forgejo repository passes `runner: native` and `install-nix: false`, since
+# its runners carry that label and have nix installed already.
+
+name: YAML
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: The label of the runner the jobs run on
+        type: string
+        default: ubuntu-latest
+      install-nix:
+        description: Whether to install nix first
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Each step runs one just recipe and nothing else, so CI checks exactly what
+# `just ci` checks before every commit. A recipe does nothing in a repository
+# without its language.
+jobs:
+  fmt:
+    name: Format
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install nix
+        if: inputs.install-nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: just fmt-check-yaml
+        run: nix develop --command just fmt-check-yaml
+
+  lint:
+    name: Lint
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install nix
+        if: inputs.install-nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: just lint-yaml
+        run: nix develop --command just lint-yaml

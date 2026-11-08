@@ -1,0 +1,37 @@
+# This repository's own CI. The other workflows in this folder are reusable
+# ones, which run only when a workflow calls them; this one calls them from
+# the same commit, for the languages this repository has, on every change.
+
+name: CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "*"
+
+permissions:
+  contents: read
+
+jobs:
+  nix:
+    uses: ./.github/workflows/nix.yml
+
+  js:
+    uses: ./.github/workflows/js.yml
+
+  toml:
+    uses: ./.github/workflows/toml.yml
+
+  yaml:
+    uses: ./.github/workflows/yaml.yml
+
+  markdown:
+    uses: ./.github/workflows/markdown.yml
