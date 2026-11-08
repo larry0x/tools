@@ -181,6 +181,7 @@ in
         name = "sync-tools";
         runtimeInputs = [
           pkgs.coreutils
+          pkgs.gawk
           pkgs.git
           pkgs.gnused
           pkgs.yq-go
@@ -203,8 +204,13 @@ in
                 # a comma or a closing bracket of a flow collection, or the
                 # end of the line. So nothing around it changes, and a value
                 # that begins another, such as a short hash of the full one,
-                # or @main of @main-v2, never matches inside it. sed uses ~
-                # as its delimiter, which git forbids in a reference.
+                # or @main of @main-v2, never matches inside it. A reference
+                # can itself hold one of those characters, as @v1,beta does,
+                # so the longest values go first: @v1,beta is pinned before
+                # @v1 could match its start. A value already pinned is left
+                # alone, and the pinned commit holds none of those
+                # characters, so no shorter value matches inside it. sed uses
+                # ~ as its delimiter, which git forbids in a reference.
                 for dir in ${workflowDirs}; do
                   for file in "$top/$dir"/*.y*ml; do
                     [ -f "$file" ] || continue
@@ -214,7 +220,7 @@ in
                       [ "$call" != "$new" ] || continue
                       old=$(printf '%s' "$call" | sed 's/[][\\.*^$+?(){}|~]/\\&/g')
                       sed -i -E "s~$old([]\"',}[:space:]]|\$)~$new\\1~g" "$file"
-                    done < <(yq -r ${pkgs.lib.escapeShellArg listCalls} "$file" | sort -u)
+                    done < <(yq -r ${pkgs.lib.escapeShellArg listCalls} "$file" | sort -u | awk '{ print length($0) "\t" $0 }' | sort -t "$(printf '\t')" -k1,1nr | cut -f2-)
                   done
                 done
                 echo 'pinned the workflow calls to ${rev}'
