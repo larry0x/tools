@@ -19,7 +19,7 @@ let
     "clippy.toml"
     "justfile"
     "rustfmt.toml"
-    "taplo.toml"
+    "tombi.toml"
     "tsconfig.json"
   ];
 
@@ -80,8 +80,8 @@ in
     pkgs.nixf
     pkgs.jq
 
-    # Formatter and linter for the TOML files, configured by taplo.toml.
-    pkgs.taplo
+    # Formatter and linter for the TOML files, configured by tombi.toml.
+    pkgs.tombi
 
     # Formatter and linters for the YAML files, configured by .yamlfmt.yaml
     # and .yamllint.yaml, and the linter for CI workflows.

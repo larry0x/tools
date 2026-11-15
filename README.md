@@ -34,7 +34,7 @@ Configuration files and justfile recipes shared by my repositories, so a change 
            "clippy.toml"
            "justfile"
            "rustfmt.toml"
-           "taplo.toml"
+           "tombi.toml"
          ];
          # ...
        in
