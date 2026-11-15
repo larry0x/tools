@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Read by tombi.toml. Every table but the root sorts its keys in ascending order, inline tables and the tables in arrays included. Tombi sorts a table only when the value matches exactly one branch of `value`, so there is a branch for each TOML type, the four date-time types among them.",
+  "additionalProperties": { "$ref": "#/definitions/value" },
+  "definitions": {
+    "value": {
+      "oneOf": [
+        { "$ref": "#/definitions/table" },
+        { "type": "array", "items": { "$ref": "#/definitions/value" } },
+        { "type": ["string", "integer", "number", "boolean"] },
+        { "type": "string", "format": "date-time" },
+        { "type": "string", "format": "date-time-local" },
+        { "type": "string", "format": "date" },
+        { "type": "string", "format": "time-local" }
+      ]
+    },
+    "table": {
+      "type": "object",
+      "x-tombi-table-keys-order": "ascending",
+      "additionalProperties": { "$ref": "#/definitions/value" }
+    }
+  }
+}
