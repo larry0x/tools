@@ -411,8 +411,7 @@ test-js:
 
 # ------------------------------------ TOML ------------------------------------
 
-# tombi reads its options from tombi.toml, which points it at
-# tombi-key-order.json for the order of keys. A warning fails the lint, as
+# tombi reads its options from tombi.toml. A warning fails the lint, as
 # clippy's `-D warnings` does for Rust.
 #
 # Format the TOML files

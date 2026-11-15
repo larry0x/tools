@@ -15,16 +15,7 @@ group-blank-lines-limit         = 1
 key-value-equals-sign-alignment = true
 string-quote-style              = "preserve"
 
-# Tombi sorts keys only where a schema asks it to. The one below asks it to in
-# every table but the root, so the keys of each table sort alphabetically,
-# and so do its sub-tables, while the top-level tables keep the order they
-# are written in. It applies to every file, in place of the JSON Schema
-# Store, whose catalog is off, so the linter checks syntax only and needs no
-# network. An array's order can carry meaning, such as ruff's isort
-# section-order, so arrays are left as written.
-[schema.catalog]
-paths = []
-
-[[schemas]]
-include = ["**/*.toml"]
-path    = "tombi-key-order.json"
+# Tombi sorts keys only where a schema from the JSON Schema Store asks it to,
+# as the one for Cargo.toml does. Elsewhere, keys keep the order they are
+# written in. The linter checks each file against its schema, which it
+# fetches over the network.

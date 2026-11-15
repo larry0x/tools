@@ -34,7 +34,6 @@ Configuration files and justfile recipes shared by my repositories, so a change 
            "clippy.toml"
            "justfile"
            "rustfmt.toml"
-           "tombi-key-order.json"
            "tombi.toml"
          ];
          # ...

@@ -19,7 +19,6 @@ let
     "clippy.toml"
     "justfile"
     "rustfmt.toml"
-    "tombi-key-order.json"
     "tombi.toml"
     "tsconfig.json"
   ];
